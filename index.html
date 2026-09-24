@@ -22,7 +22,9 @@
 <h1>DiffPDF Web</h1>
 <div class="bar">
   <label>檔案 1 <input type="file" id="f1" accept="application/pdf"></label>
+  <label>起始頁 <input type="number" id="p1" value="1" min="1" style="width:4em"></label>
   <label>檔案 2 <input type="file" id="f2" accept="application/pdf"></label>
+  <label>起始頁 <input type="number" id="p2" value="1" min="1" style="width:4em"></label>
   <label>模式
     <select id="mode">
       <option value="words">Words（逐字詞，英文）</option>
@@ -65,12 +67,18 @@ async function tokens(page, vp, mode) {
   const out = [];
   // Characters mode: each CJK char is a token, but numbers/Latin runs stay whole so "455,420" isn't split into digits.
   const re = mode === 'words' ? /\S+/g : new RegExp(`[${CJK}]|[^\\s${CJK}]+`, 'gu');
-  for (const it of (await page.getTextContent()).items) {
-    if (!it.str) continue;
+  const items = (await page.getTextContent()).items.filter(it => it.str).map(it => {
     const tx = pdfjs.Util.transform(vp.transform, it.transform);
-    const h = Math.hypot(tx[2], tx[3]), w = it.width * SCALE, len = it.str.length;
-    for (const m of it.str.replace(HYPHENS, '-').matchAll(re)) {
-      out.push({ t: m[0], x: tx[4] + w * m.index / len, y: tx[5] - h, w: w * m[0].length / len, h });
+    return { str: it.str, x: tx[4], y: tx[5], h: Math.hypot(tx[2], tx[3]), w: it.width * SCALE };
+  });
+  // Reading order by position, not content-stream order, so identical-looking pages extract identically.
+  // ponytail: same-line = baselines within half a line height; fine for tables, not for rotated text.
+  items.sort((a, b) => Math.abs(a.y - b.y) > Math.min(a.h, b.h) / 2 ? a.y - b.y : a.x - b.x);
+  for (const it of items) {
+    // NFKC folds look-alike code points (Kangxi radical ⼤ → 大, full-width forms).
+    const str = it.str.normalize('NFKC').replace(HYPHENS, '-'), len = str.length;
+    for (const m of str.matchAll(re)) {
+      out.push({ t: m[0], x: it.x + it.w * m.index / len, y: it.y - it.h, w: it.w * m[0].length / len, h: it.h });
     }
   }
   return out;
@@ -139,7 +147,7 @@ function wrap(ctx, text, width) {
 
 // One export page: header, both pages side by side, numbered notes below.
 // ponytail: drawn on a canvas so Chinese needs no embedded font; text in the exported PDF isn't selectable.
-function composite({ n, c1, c2, notes }) {
+function composite({ label, c1, c2, notes }) {
   const M = 24, F = 20, LH = 28;
   const w = Math.max(c1.width, c2.width), h = Math.max(c1.height, c2.height), W = w * 2 + M * 3;
   const c = document.createElement('canvas'), ctx = c.getContext('2d');
@@ -149,7 +157,7 @@ function composite({ n, c1, c2, notes }) {
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
   ctx.font = `bold ${F}px sans-serif`;
-  ctx.fillText(`第 ${n} 頁　${names[0]}  ↔  ${names[1]}`, M, M);
+  ctx.fillText(`${label}　${names[0]}  ↔  ${names[1]}`, M, M);
   ctx.drawImage(c1, M, M + LH * 2); ctx.drawImage(c2, M * 2 + w, M + LH * 2);
   ctx.font = `${F}px sans-serif`;
   lines.forEach((l, k) => ctx.fillText(l, M, M + LH * 2 + h + M + k * LH));
@@ -175,11 +183,14 @@ $('go').onclick = async () => {
   $('save').disabled = true;
   try {
     const [d1, d2] = await Promise.all([load($('f1')), load($('f2'))]);
-    const total = Math.max(d1.numPages, d2.numPages);
+    // Start pages let a file with extra leading pages line up (a lite version of DiffPDF's page ranges).
+    const s1 = Math.max(1, +$('p1').value || 1), s2 = Math.max(1, +$('p2').value || 1);
+    const total = Math.max(d1.numPages - s1, d2.numPages - s2) + 1;
     let differ = 0;
-    for (let n = 1; n <= total; n++) {
-      $('status').textContent = `比對中 ${n} / ${total}…`;
-      const [r1, r2] = await Promise.all([render(d1, n), render(d2, n)]);
+    for (let k = 0; k < total; k++) {
+      const a = s1 + k, b = s2 + k, label = a === b ? `第 ${a} 頁` : `第 ${a} ↔ ${b} 頁`;
+      $('status').textContent = `比對中 ${k + 1} / ${total}…`;
+      const [r1, r2] = await Promise.all([render(d1, a), render(d2, b)]);
       let notes;
       if (!r1.page || !r2.page) notes = [`檔案 ${r1.page ? 2 : 1} 沒有這一頁`];
       else if (mode === 'appearance') {
@@ -195,15 +206,15 @@ $('go').onclick = async () => {
       }
       if (!notes.length) continue;
       differ++;
-      results.push({ n, c1: r1.canvas, c2: r2.canvas, notes });
+      results.push({ label, c1: r1.canvas, c2: r2.canvas, notes });
       const div = document.createElement('div');
       div.className = 'pair';
-      div.innerHTML = `<h3>第 ${n} 頁（${notes.length} 處差異）</h3><div class="sides"></div><ol class="notes"></ol>`;
+      div.innerHTML = `<h3>${label}（${notes.length} 處差異）</h3><div class="sides"></div><ol class="notes"></ol>`;
       div.children[1].append(r1.canvas, r2.canvas);
       for (const t of notes) div.children[2].append(Object.assign(document.createElement('li'), { textContent: t }));
       out.append(div);
     }
-    $('status').textContent = differ ? `共 ${total} 頁，${differ} 頁有差異。` : `共 ${total} 頁，完全相同。`;
+    $('status').textContent = differ ? `共 ${total} 組頁面，${differ} 組有差異。` : `共 ${total} 組頁面，完全相同。`;
     $('save').disabled = !differ;
   } catch (e) {
     $('status').textContent = '錯誤：' + e.message;
