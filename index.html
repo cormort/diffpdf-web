@@ -14,7 +14,9 @@
   .pair h3 { margin:0 0 8px; font-size:1rem; }
   .sides { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   canvas { width:100%; height:auto; border:1px solid var(--line); background:#fff; }
+  .notes { margin:8px 0 0; padding-left:1.5em; font-size:.9rem; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/3.0.3/jspdf.umd.min.js"></script>
 </head>
 <body>
 <h1>DiffPDF Web</h1>
@@ -29,6 +31,7 @@
     </select>
   </label>
   <button id="go">比較</button>
+  <button id="save" disabled>匯出 PDF</button>
   <span id="status">檔案只在瀏覽器內處理，不會上傳。</span>
 </div>
 <div id="out"></div>
@@ -39,6 +42,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4
 
 const SCALE = 1.5;
 const $ = id => document.getElementById(id);
+const CJK = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}';
 const HYPHENS = /[­‐-―−]/g;
 
 async function load(input) {
@@ -59,7 +63,8 @@ async function render(doc, n) {
 async function tokens(page, vp, mode) {
   if (!page) return [];
   const out = [];
-  const re = mode === 'words' ? /\S+/g : /\S/g;
+  // Characters mode: each CJK char is a token, but numbers/Latin runs stay whole so "455,420" isn't split into digits.
+  const re = mode === 'words' ? /\S+/g : new RegExp(`[${CJK}]|[^\\s${CJK}]+`, 'gu');
   for (const it of (await page.getTextContent()).items) {
     if (!it.str) continue;
     const tx = pdfjs.Util.transform(vp.transform, it.transform);
@@ -79,16 +84,21 @@ function diff(a, b) {
   const n = ea - s, m = eb - s, W = m + 1, L = new Uint32Array((n + 1) * W);
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
     L[i * W + j] = a[s + i].t === b[s + j].t ? L[(i + 1) * W + j + 1] + 1 : Math.max(L[(i + 1) * W + j], L[i * W + j + 1]);
-  const da = [], db = [];
-  let i = 0, j = 0;
+  // Consecutive changed tokens form one hunk {d: deleted, i: inserted} for the notes.
+  const da = [], db = [], hunks = [];
+  let h = null, i = 0, j = 0;
+  const flush = () => { if (h) hunks.push(h); h = null; };
+  const del = t => { (h ??= { d: [], i: [] }).d.push(t); da.push(t); };
+  const ins = t => { (h ??= { d: [], i: [] }).i.push(t); db.push(t); };
   while (i < n && j < m) {
-    if (a[s + i].t === b[s + j].t) { i++; j++; }
-    else if (L[(i + 1) * W + j] >= L[i * W + j + 1]) da.push(a[s + i++]);
-    else db.push(b[s + j++]);
+    if (a[s + i].t === b[s + j].t) { flush(); i++; j++; }
+    else if (L[(i + 1) * W + j] >= L[i * W + j + 1]) del(a[s + i++]);
+    else ins(b[s + j++]);
   }
-  while (i < n) da.push(a[s + i++]);
-  while (j < m) db.push(b[s + j++]);
-  return [da, db];
+  while (i < n) del(a[s + i++]);
+  while (j < m) ins(b[s + j++]);
+  flush();
+  return [da, db, hunks];
 }
 
 function mark(canvas, boxes) {
@@ -114,10 +124,55 @@ function pixelDiff(c1, c2) {
   return count;
 }
 
+let results = [], names = [];
+const MAX_NOTES = 100; // ponytail: cap per page so a totally different page doesn't make a mile-long export
+
+function wrap(ctx, text, width) {
+  const lines = [];
+  let line = '';
+  for (const ch of text) {
+    if (ctx.measureText(line + ch).width > width) { lines.push(line); line = '  '; }
+    line += ch;
+  }
+  return [...lines, line];
+}
+
+// One export page: header, both pages side by side, numbered notes below.
+// ponytail: drawn on a canvas so Chinese needs no embedded font; text in the exported PDF isn't selectable.
+function composite({ n, c1, c2, notes }) {
+  const M = 24, F = 20, LH = 28;
+  const w = Math.max(c1.width, c2.width), h = Math.max(c1.height, c2.height), W = w * 2 + M * 3;
+  const c = document.createElement('canvas'), ctx = c.getContext('2d');
+  ctx.font = `${F}px sans-serif`;
+  const lines = notes.flatMap((t, k) => wrap(ctx, `${k + 1}. ${t}`, W - M * 2));
+  c.width = W; c.height = M + LH * 2 + h + M + lines.length * LH + M;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
+  ctx.font = `bold ${F}px sans-serif`;
+  ctx.fillText(`第 ${n} 頁　${names[0]}  ↔  ${names[1]}`, M, M);
+  ctx.drawImage(c1, M, M + LH * 2); ctx.drawImage(c2, M * 2 + w, M + LH * 2);
+  ctx.font = `${F}px sans-serif`;
+  lines.forEach((l, k) => ctx.fillText(l, M, M + LH * 2 + h + M + k * LH));
+  return c;
+}
+
+$('save').onclick = () => {
+  let pdf;
+  for (const r of results) {
+    const c = composite(r), size = [c.width, c.height], o = c.width > c.height ? 'l' : 'p';
+    if (!pdf) pdf = new window.jspdf.jsPDF({ orientation: o, unit: 'px', format: size, hotfixes: ['px_scaling'] });
+    else pdf.addPage(size, o);
+    pdf.addImage(c.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, c.width, c.height);
+  }
+  pdf.save('diffpdf-result.pdf');
+};
+
 $('go').onclick = async () => {
   if (!$('f1').files[0] || !$('f2').files[0]) { $('status').textContent = '請選擇兩個 PDF 檔。'; return; }
   const mode = $('mode').value, out = $('out');
   out.innerHTML = '';
+  results = []; names = [$('f1').files[0].name, $('f2').files[0].name];
+  $('save').disabled = true;
   try {
     const [d1, d2] = await Promise.all([load($('f1')), load($('f2'))]);
     const total = Math.max(d1.numPages, d2.numPages);
@@ -125,22 +180,31 @@ $('go').onclick = async () => {
     for (let n = 1; n <= total; n++) {
       $('status').textContent = `比對中 ${n} / ${total}…`;
       const [r1, r2] = await Promise.all([render(d1, n), render(d2, n)]);
-      let changed;
-      if (mode === 'appearance') changed = pixelDiff(r1.canvas, r2.canvas) > 0;
-      else {
-        const [a, b] = diff(await tokens(r1.page, r1.vp, mode), await tokens(r2.page, r2.vp, mode));
+      let notes;
+      if (!r1.page || !r2.page) notes = [`檔案 ${r1.page ? 2 : 1} 沒有這一頁`];
+      else if (mode === 'appearance') {
+        const px = pixelDiff(r1.canvas, r2.canvas);
+        notes = px ? [`${px.toLocaleString()} 個像素不同（${(px / (r1.canvas.width * r1.canvas.height) * 100).toFixed(2)}%）`] : [];
+      } else {
+        const [a, b, hunks] = diff(await tokens(r1.page, r1.vp, mode), await tokens(r2.page, r2.vp, mode));
         mark(r1.canvas, a); mark(r2.canvas, b);
-        changed = a.length + b.length > 0 || !r1.page !== !r2.page;
+        const txt = ts => ts.map(t => t.t).join(' ').replace(new RegExp(`(?<=[${CJK}]) (?=[${CJK}])`, 'gu'), '');
+        notes = hunks.map(h => h.d.length && h.i.length ? `「${txt(h.d)}」→「${txt(h.i)}」`
+          : h.d.length ? `刪除「${txt(h.d)}」` : `新增「${txt(h.i)}」`);
+        if (notes.length > MAX_NOTES) notes = [...notes.slice(0, MAX_NOTES), `…另有 ${notes.length - MAX_NOTES} 處差異`];
       }
-      if (!changed) continue;
+      if (!notes.length) continue;
       differ++;
+      results.push({ n, c1: r1.canvas, c2: r2.canvas, notes });
       const div = document.createElement('div');
       div.className = 'pair';
-      div.innerHTML = `<h3>第 ${n} 頁</h3><div class="sides"></div>`;
-      div.lastChild.append(r1.canvas, r2.canvas);
+      div.innerHTML = `<h3>第 ${n} 頁（${notes.length} 處差異）</h3><div class="sides"></div><ol class="notes"></ol>`;
+      div.children[1].append(r1.canvas, r2.canvas);
+      for (const t of notes) div.children[2].append(Object.assign(document.createElement('li'), { textContent: t }));
       out.append(div);
     }
     $('status').textContent = differ ? `共 ${total} 頁，${differ} 頁有差異。` : `共 ${total} 頁，完全相同。`;
+    $('save').disabled = !differ;
   } catch (e) {
     $('status').textContent = '錯誤：' + e.message;
   }
