@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DiffPDF Web</title>
+<style>
+  :root { --bg:#fff; --fg:#222; --muted:#666; --line:#ddd; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1b1b; --fg:#eee; --muted:#aaa; --line:#444; } }
+  body { margin:0; padding:16px; font-family:system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  .bar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px; }
+  #status { color:var(--muted); }
+  .pair { border-top:1px solid var(--line); padding:12px 0; }
+  .pair h3 { margin:0 0 8px; font-size:1rem; }
+  .sides { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  canvas { width:100%; height:auto; border:1px solid var(--line); background:#fff; }
+</style>
+</head>
+<body>
+<h1>DiffPDF Web</h1>
+<div class="bar">
+  <label>檔案 1 <input type="file" id="f1" accept="application/pdf"></label>
+  <label>檔案 2 <input type="file" id="f2" accept="application/pdf"></label>
+  <label>模式
+    <select id="mode">
+      <option value="words">Words（逐字詞，英文）</option>
+      <option value="chars">Characters（逐字元，中文）</option>
+      <option value="appearance">Appearance（逐像素）</option>
+    </select>
+  </label>
+  <button id="go">比較</button>
+  <span id="status">檔案只在瀏覽器內處理，不會上傳。</span>
+</div>
+<div id="out"></div>
+
+<script type="module">
+import * as pdfjs from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
+pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+
+const SCALE = 1.5;
+const $ = id => document.getElementById(id);
+const HYPHENS = /[­‐-―−]/g;
+
+async function load(input) {
+  return pdfjs.getDocument({ data: await input.files[0].arrayBuffer() }).promise;
+}
+
+async function render(doc, n) {
+  const canvas = document.createElement('canvas');
+  if (!doc || n > doc.numPages) { canvas.width = canvas.height = 1; return { canvas, tokens: [] }; }
+  const page = await doc.getPage(n);
+  const vp = page.getViewport({ scale: SCALE });
+  canvas.width = vp.width; canvas.height = vp.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  return { canvas, page, vp };
+}
+
+// Split each text item into word or character tokens with approximate boxes.
+async function tokens(page, vp, mode) {
+  if (!page) return [];
+  const out = [];
+  const re = mode === 'words' ? /\S+/g : /\S/g;
+  for (const it of (await page.getTextContent()).items) {
+    if (!it.str) continue;
+    const tx = pdfjs.Util.transform(vp.transform, it.transform);
+    const h = Math.hypot(tx[2], tx[3]), w = it.width * SCALE, len = it.str.length;
+    for (const m of it.str.replace(HYPHENS, '-').matchAll(re)) {
+      out.push({ t: m[0], x: tx[4] + w * m.index / len, y: tx[5] - h, w: w * m[0].length / len, h });
+    }
+  }
+  return out;
+}
+
+// Marks tokens not in the LCS. ponytail: O(n*m) DP after trimming common ends; switch to Myers if huge pages get slow.
+function diff(a, b) {
+  let s = 0, ea = a.length, eb = b.length;
+  while (s < ea && s < eb && a[s].t === b[s].t) s++;
+  while (ea > s && eb > s && a[ea - 1].t === b[eb - 1].t) { ea--; eb--; }
+  const n = ea - s, m = eb - s, W = m + 1, L = new Uint32Array((n + 1) * W);
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    L[i * W + j] = a[s + i].t === b[s + j].t ? L[(i + 1) * W + j + 1] + 1 : Math.max(L[(i + 1) * W + j], L[i * W + j + 1]);
+  const da = [], db = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[s + i].t === b[s + j].t) { i++; j++; }
+    else if (L[(i + 1) * W + j] >= L[i * W + j + 1]) da.push(a[s + i++]);
+    else db.push(b[s + j++]);
+  }
+  while (i < n) da.push(a[s + i++]);
+  while (j < m) db.push(b[s + j++]);
+  return [da, db];
+}
+
+function mark(canvas, boxes) {
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(255,200,0,0.45)';
+  ctx.strokeStyle = 'rgba(220,0,0,0.8)';
+  for (const b of boxes) { ctx.fillRect(b.x, b.y, b.w, b.h); ctx.strokeRect(b.x, b.y, b.w, b.h); }
+}
+
+// Strict pixel comparison; tints every differing pixel red on both sides.
+function pixelDiff(c1, c2) {
+  const W = Math.max(c1.width, c2.width), H = Math.max(c1.height, c2.height);
+  const grab = c => c.getContext('2d').getImageData(0, 0, W, H);
+  const d1 = grab(c1), d2 = grab(c2), p1 = d1.data, p2 = d2.data;
+  let count = 0;
+  for (let k = 0; k < p1.length; k += 4) {
+    if (p1[k] !== p2[k] || p1[k + 1] !== p2[k + 1] || p1[k + 2] !== p2[k + 2] || p1[k + 3] !== p2[k + 3]) {
+      count++;
+      p1[k] = p2[k] = 255; p1[k + 1] = p2[k + 1] = 0; p1[k + 2] = p2[k + 2] = 0; p1[k + 3] = p2[k + 3] = 255;
+    }
+  }
+  if (count) for (const [c, d] of [[c1, d1], [c2, d2]]) { c.width = W; c.height = H; c.getContext('2d').putImageData(d, 0, 0); }
+  return count;
+}
+
+$('go').onclick = async () => {
+  if (!$('f1').files[0] || !$('f2').files[0]) { $('status').textContent = '請選擇兩個 PDF 檔。'; return; }
+  const mode = $('mode').value, out = $('out');
+  out.innerHTML = '';
+  try {
+    const [d1, d2] = await Promise.all([load($('f1')), load($('f2'))]);
+    const total = Math.max(d1.numPages, d2.numPages);
+    let differ = 0;
+    for (let n = 1; n <= total; n++) {
+      $('status').textContent = `比對中 ${n} / ${total}…`;
+      const [r1, r2] = await Promise.all([render(d1, n), render(d2, n)]);
+      let changed;
+      if (mode === 'appearance') changed = pixelDiff(r1.canvas, r2.canvas) > 0;
+      else {
+        const [a, b] = diff(await tokens(r1.page, r1.vp, mode), await tokens(r2.page, r2.vp, mode));
+        mark(r1.canvas, a); mark(r2.canvas, b);
+        changed = a.length + b.length > 0 || !r1.page !== !r2.page;
+      }
+      if (!changed) continue;
+      differ++;
+      const div = document.createElement('div');
+      div.className = 'pair';
+      div.innerHTML = `<h3>第 ${n} 頁</h3><div class="sides"></div>`;
+      div.lastChild.append(r1.canvas, r2.canvas);
+      out.append(div);
+    }
+    $('status').textContent = differ ? `共 ${total} 頁，${differ} 頁有差異。` : `共 ${total} 頁，完全相同。`;
+  } catch (e) {
+    $('status').textContent = '錯誤：' + e.message;
+  }
+};
+</script>
+</body>
+</html>
