@@ -30,6 +30,8 @@
   h1 { font:700 2.25rem/1.2 var(--serif); margin:0; letter-spacing:.02em; }
   h1 mark { background:linear-gradient(transparent 55%, var(--mark) 55%); color:inherit; padding:0 .1em; }
   .lede { margin:8px 0 0; color:var(--muted); max-width:40em; }
+  .sample { all:unset; cursor:pointer; color:var(--blue); text-decoration:underline; text-underline-offset:3px; margin-left:.5em; }
+  .sample:focus-visible { outline:2px solid var(--blue); }
 
   .slots { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .slot { background:var(--sheet); border:1.5px dashed var(--rule); border-radius:10px; transition:border-color .15s, background .15s; }
@@ -152,7 +154,7 @@
 <body>
 <header class="top wrap">
   <h1>DiffPDF <mark>Web</mark></h1>
-  <p class="lede">比對兩份 PDF 的文字與版面差異。檔案只在你的瀏覽器裡處理，不會上傳。可以一次把兩個 PDF 拖進頁面。</p>
+  <p class="lede">比對兩份 PDF 的文字與版面差異。檔案只在你的瀏覽器裡處理，不會上傳。可以一次把兩個 PDF 拖進頁面。<button id="sample" class="sample">沒有檔案？載入範例試試</button></p>
 </header>
 
 <main class="wrap">
@@ -402,6 +404,14 @@ for (const k of [1, 2]) {
   slot.ondragleave = () => slot.classList.remove('over');
   slot.ondrop = e => { e.preventDefault(); e.stopPropagation(); slot.classList.remove('over'); dropFiles(e.dataTransfer.files, k); };
 }
+$('sample').onclick = async () => {
+  try {
+    const get = async n => new File([await (await fetch('samples/' + n)).blob()], n, { type: 'application/pdf' });
+    const [a, b] = await Promise.all([get('original.pdf'), get('revised.pdf')]);
+    document.querySelector('input[name=rev][value="2"]').checked = true; roles();
+    setFile(1, a); setFile(2, b);
+  } catch { $('status').textContent = '無法載入範例檔案。'; }
+};
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => { e.preventDefault(); dropFiles(e.dataTransfer.files); });
 const MAX_NOTES = 100; // ponytail: cap per page so a totally different page doesn't make a mile-long export
