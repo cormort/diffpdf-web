@@ -119,10 +119,54 @@
   .pane { overflow:auto; background:#C9D0D8; }
   .pane .cap { position:sticky; top:0; left:0; z-index:1; padding:4px 10px; font-size:.8rem; background:var(--paper); color:var(--muted); border-bottom:1px solid var(--rule); }
   .pane canvas { max-width:none; border:0; box-shadow:none; margin:12px; }
+  .meta { padding:0 20px 16px; color:var(--muted); font-size:.9rem; }
+  .modes label:has(input:disabled) { opacity:.45; cursor:not-allowed; }
+  .filter-btn { margin-left:auto; padding:4px 12px; font-size:.85rem; background:var(--sheet); color:var(--ink); border:1px solid var(--rule); }
+  .filter-btn:hover { border-color:var(--ink); }
+  .notice { margin:16px 0 0; padding:10px 14px; border-radius:8px; background:var(--tint); border:1px solid var(--rule); font-size:.9rem; color:var(--ink); }
+
+  .doc-diff { background:var(--sheet); border:1px solid var(--rule); border-radius:8px; overflow:hidden; }
+  .doc-row { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid var(--rule); }
+  .doc-row:last-child { border-bottom:0; }
+  .doc-row.is-del { background:rgba(180,35,24,.06); }
+  .doc-row.is-ins { background:rgba(31,78,140,.07); }
+  .doc-row.is-mod { background:rgba(245,213,71,.12); }
+  .doc-cell { padding:10px 14px; overflow-wrap:anywhere; min-width:0; }
+  .doc-cell + .doc-cell { border-left:1px solid var(--rule); }
+  .doc-cell .bnum { display:inline-block; min-width:2.2em; font-size:.75rem; color:var(--muted); font-variant-numeric:tabular-nums; margin-right:6px; user-select:none; }
+  .doc-cell h1, .doc-cell h2, .doc-cell h3, .doc-cell h4, .doc-cell h5, .doc-cell h6 { font-family:var(--serif); margin:0; font-size:1.05rem; display:inline; }
+  .doc-cell p { margin:0; display:inline; }
+  .doc-cell del { background:rgba(180,35,24,.12); padding:0 2px; border-radius:3px; }
+  .doc-cell ins { background:rgba(31,78,140,.14); padding:0 2px; border-radius:3px; }
+  .doc-skip { padding:6px 14px; text-align:center; font-size:.82rem; color:var(--muted); background:var(--paper); border-bottom:1px solid var(--rule); }
+  .doc-table-wrap { overflow-x:auto; }
+  .doc-mini { border-collapse:collapse; width:100%; font-size:.88rem; }
+  .doc-mini th, .doc-mini td { border:1px solid var(--rule); padding:4px 8px; text-align:left; vertical-align:top; }
+
+  .sheet-wrap { overflow:auto; max-height:70vh; border:1px solid var(--rule); border-radius:8px; background:var(--sheet); }
+  .sheet-diff { border-collapse:collapse; width:100%; font-size:.9rem; font-variant-numeric:tabular-nums; }
+  .sheet-diff th, .sheet-diff td { border:1px solid var(--rule); padding:6px 10px; text-align:left; vertical-align:top; white-space:pre-wrap; min-width:72px; }
+  .sheet-diff thead th { position:sticky; top:0; z-index:1; background:var(--paper); color:var(--muted); font-weight:600; text-align:center; }
+  .sheet-diff .rnum { width:3.5em; min-width:3.5em; text-align:right; color:var(--muted); background:var(--paper); font-size:.82rem; }
+  .sheet-diff tr.row-del { background:rgba(180,35,24,.09); }
+  .sheet-diff tr.row-ins { background:rgba(31,78,140,.10); }
+  .sheet-diff tr.row-skip td { text-align:center; color:var(--muted); background:var(--paper); font-size:.82rem; padding:6px; }
+  .sheet-diff td.cell-mod { background:rgba(245,213,71,.35); box-shadow:inset 0 0 0 1.5px var(--red); }
+  .sheet-diff td del { background:rgba(180,35,24,.12); padding:0 2px; border-radius:2px; }
+  .sheet-diff td ins { background:rgba(31,78,140,.14); padding:0 2px; border-radius:2px; }
+  @media (prefers-color-scheme: dark) {
+    .doc-row.is-del, .sheet-diff tr.row-del { background:rgba(242,135,125,.12); }
+    .doc-row.is-ins, .sheet-diff tr.row-ins { background:rgba(141,182,245,.12); }
+    .doc-row.is-mod { background:rgba(201,169,46,.14); }
+    .sheet-diff td.cell-mod { background:rgba(201,169,46,.24); }
+    .doc-cell del, .sheet-diff td del { background:rgba(242,135,125,.2); }
+    .doc-cell ins, .sheet-diff td ins { background:rgba(141,182,245,.2); }
+  }
   footer { padding:32px 0 48px; color:var(--muted); font-size:.85rem; }
 
   @media (max-width:720px) {
-    .slots, .sides { grid-template-columns:1fr; }
+    .slots, .sides, .doc-row { grid-template-columns:1fr; }
+    .doc-cell + .doc-cell { border-left:0; border-top:1px dashed var(--rule); }
     fieldset.modes { flex-direction:column; flex-basis:100%; }
     .modes label + label { border-left:1px solid var(--rule); border-top:0; }
     .modes label:first-of-type { border-radius:8px 8px 0 0; }
@@ -141,6 +185,8 @@
   html { scroll-behavior:smooth; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/3.0.3/jspdf.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-GHGBM401HN"></script>
@@ -154,21 +200,23 @@
 <body>
 <header class="top wrap">
   <h1>DiffPDF <mark>Web</mark></h1>
-  <p class="lede">比對兩份 PDF 的文字與版面差異。檔案只在你的瀏覽器裡處理，不會上傳。可以一次把兩個 PDF 拖進頁面。沒有檔案？載入範例：<button class="sample" data-files="original.pdf revised.pdf">營運計畫</button>、<button class="sample" data-files="finance-original.pdf finance-revised.pdf">財務報表</button></p>
+  <p class="lede">比對兩份 PDF、Word（<code>.docx</code>）或 Excel（<code>.xlsx</code> / <code>.xls</code> / <code>.csv</code>）的文字與內容差異。檔案只在你的瀏覽器裡處理，不會上傳。可以一次把兩個檔案拖進頁面。沒有檔案？載入範例：<button class="sample" data-files="original.pdf revised.pdf">營運計畫 (PDF)</button>、<button class="sample" data-files="finance-original.pdf finance-revised.pdf">財務報表 (PDF)</button>、<button class="sample" data-files="contract-original.docx contract-revised.docx">合約條款 (Word)</button>、<button class="sample" data-files="budget-original.xlsx budget-revised.xlsx">部門預算 (Excel)</button></p>
 </header>
 
 <main class="wrap">
   <div class="slots">
     <div class="slot" id="slot1">
-      <label class="drop" for="f1"><span class="role">原版</span><span class="name">點這裡選擇檔案，或把 PDF 拖進來</span></label>
-      <input type="file" id="f1" class="sr-only" accept="application/pdf">
+      <label class="drop" for="f1"><span class="role">原版</span><span class="name">點這裡選擇檔案，或把 PDF / Word / Excel 拖進來</span></label>
+      <input type="file" id="f1" class="sr-only" accept=".pdf,.docx,.xlsx,.xls,.ods,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv">
       <div class="range">從第<input type="number" id="p1" value="1" min="1" aria-label="第 1 份檔案的起始頁">頁開始比對<span class="pages"></span></div>
+      <div class="meta" hidden></div>
       <label class="rev"><input type="radio" name="rev" value="1">這份是修正後的檔案</label>
     </div>
     <div class="slot" id="slot2">
-      <label class="drop" for="f2"><span class="role">修正版</span><span class="name">點這裡選擇檔案，或把 PDF 拖進來</span></label>
-      <input type="file" id="f2" class="sr-only" accept="application/pdf">
+      <label class="drop" for="f2"><span class="role">修正版</span><span class="name">點這裡選擇檔案，或把 PDF / Word / Excel 拖進來</span></label>
+      <input type="file" id="f2" class="sr-only" accept=".pdf,.docx,.xlsx,.xls,.ods,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv">
       <div class="range">從第<input type="number" id="p2" value="1" min="1" aria-label="第 2 份檔案的起始頁">頁開始比對<span class="pages"></span></div>
+      <div class="meta" hidden></div>
       <label class="rev"><input type="radio" name="rev" value="2" checked>這份是修正後的檔案</label>
     </div>
   </div>
@@ -213,7 +261,7 @@
   <div class="vpanes" id="vpanes"></div>
 </dialog>
 
-<footer class="wrap">以 <a href="https://github.com/cormort/diffpdf-web" style="color:inherit">DiffPDF</a> 的三種比對模式為藍本，使用 pdf.js 在瀏覽器內運算。</footer>
+<footer class="wrap">以 <a href="https://github.com/cormort/diffpdf-web" style="color:inherit">DiffPDF</a> 的三種比對模式為藍本，使用 pdf.js、Mammoth.js 與 SheetJS 在瀏覽器內運算。</footer>
 
 <script type="module">
 import * as pdfjs from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
@@ -325,22 +373,147 @@ function pixelDiff(c1, c2, [t, b, l, r]) {
   return count;
 }
 
-let results = [], names = [];
+let results = [], names = [], currentFormat = 'pdf', exportEntries = [];
+const slotMeta = [null, null, null];
 const noteText = n => n.msg ?? (n.d && n.i ? `「${n.d}」→「${n.i}」` : n.d ? `刪除「${n.d}」` : `新增「${n.i}」`);
 const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+
+const normText = s => String(s ?? '').normalize('NFKC').replace(HYPHENS, '-');
+function tokenizeStr(str, mode) {
+  const s = normText(str);
+  const re = mode === 'words' ? /\S+/g : new RegExp(`[${CJK}]|[^\\s${CJK}]+`, 'gu');
+  return [...s.matchAll(re)].map(m => ({ t: m[0] }));
+}
+const tokensToText = ts => ts.map(t => t.t).join(' ').replace(new RegExp(`(?<=[${CJK}]) (?=[${CJK}])`, 'gu'), '');
+
+function fileKind(file) {
+  if (!file) return null;
+  const n = file.name.toLowerCase(), t = file.type;
+  if (t === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
+  if (n.endsWith('.docx') || t === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (n.endsWith('.doc') || t === 'application/msword') return 'doc-legacy';
+  if (/\.(xlsx|xls|ods|csv)$/i.test(n) || t === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || t === 'application/vnd.ms-excel' || t === 'text/csv') return 'excel';
+  return null;
+}
+
+async function parseDocx(file) {
+  if (!window.mammoth) throw new Error('Mammoth.js 尚未載入完成，請檢查網路連線後重試。');
+  const buf = await file.arrayBuffer();
+  const { value: html } = await window.mammoth.convertToHtml({ arrayBuffer: buf });
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const blocks = [];
+  function walk(node) {
+    for (const ch of node.children) {
+      const tag = ch.tagName.toLowerCase();
+      if (tag === 'table') {
+        const rows = [...ch.querySelectorAll('tr')].map(tr =>
+          [...tr.children].map(td => td.textContent.replace(/\s+/g, ' ').trim())
+        ).filter(r => r.some(Boolean));
+        if (rows.length) blocks.push({ type: 'table', rows });
+      } else if (/^(h[1-6]|p|li|pre|blockquote)$/.test(tag)) {
+        const text = ch.textContent.replace(/\s+/g, ' ').trim();
+        if (text) blocks.push({ type: 'text', tag, text });
+      } else {
+        walk(ch);
+      }
+    }
+  }
+  walk(doc.body);
+  return blocks;
+}
+
+async function parseExcel(file) {
+  if (!window.XLSX) throw new Error('SheetJS 尚未載入完成，請檢查網路連線後重試。');
+  const buf = await file.arrayBuffer();
+  const wb = window.XLSX.read(buf, { type: 'array', cellFormula: true, cellNF: true });
+  const sheets = wb.SheetNames.map(name => {
+    const ws = wb.Sheets[name];
+    const ref = ws['!ref'];
+    if (!ref) return { name, rows: [] };
+    const range = window.XLSX.utils.decode_range(ref);
+    const rows = [];
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      const row = [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = ws[window.XLSX.utils.encode_cell({ r, c })];
+        const text = cell ? (cell.w ?? (cell.v != null ? String(cell.v) : '')) : '';
+        const formula = cell?.f ? '=' + cell.f : '';
+        row.push({ text: String(text), formula });
+      }
+      while (row.length && !row.at(-1).text && !row.at(-1).formula) row.pop();
+      rows.push(row);
+    }
+    while (rows.length && !rows.at(-1).length) rows.pop();
+    return { name, rows };
+  });
+  return { sheets };
+}
+
+function syncControls() {
+  const k1 = slotMeta[1]?.kind, k2 = slotMeta[2]?.kind;
+  const hasNonPdf = (k1 && k1 !== 'pdf') || (k2 && k2 !== 'pdf');
+  document.querySelector('.adv').hidden = !!hasNonPdf;
+  const appRadio = document.querySelector('input[name=mode][value=appearance]');
+  appRadio.disabled = !!hasNonPdf;
+  if (hasNonPdf && appRadio.checked) document.querySelector('input[name=mode][value=chars]').checked = true;
+  if (!k1 || !k2) return;
+  if (k1 === 'docx' && k2 === 'docx') $('status').textContent = '兩份 Word 文件已就緒，請按「開始比對」。';
+  else if (k1 === 'excel' && k2 === 'excel') $('status').textContent = '兩份 Excel 活頁簿已就緒，請按「開始比對」。';
+  else if ((k1 === 'pdf' && k2 === 'docx') || (k1 === 'docx' && k2 === 'pdf')) $('status').textContent = '偵測到 PDF 與 Word 跨格式檔案，將比對文字內容。';
+  else if (k1 !== k2) $('status').textContent = 'Excel 只能與 Excel 比對；PDF 與 Word 可互相或各自比對。';
+}
 
 async function show(k) {
   const input = $('f' + k), slot = $('slot' + k), f = input.files[0];
   if (!f) return;
   slot.classList.add('filled');
   slot.querySelector('.name').textContent = f.name;
-  const pages = slot.querySelector('.pages');
-  let text;
-  try { const d = await load(input); text = `，共 ${d.numPages} 頁`; $('p' + k).max = d.numPages; }
-  catch { text = '，這個檔案無法以 PDF 開啟'; }
-  if (input.files[0] !== f) return; // a newer drop may have replaced the file meanwhile
-  pages.textContent = text;
-  autoAlign();
+  const rangeDiv = slot.querySelector('.range'), metaDiv = slot.querySelector('.meta'), pages = slot.querySelector('.pages');
+  const kind = fileKind(f);
+  slotMeta[k] = { kind, file: f };
+  if (kind === 'pdf') {
+    rangeDiv.hidden = false; metaDiv.hidden = true;
+    let text;
+    try { const d = await load(input); text = `，共 ${d.numPages} 頁`; $('p' + k).max = d.numPages; }
+    catch { text = '，這個檔案無法以 PDF 開啟'; }
+    if (input.files[0] !== f) return;
+    pages.textContent = text;
+    syncControls();
+    if (slotMeta[1]?.kind === 'pdf' && slotMeta[2]?.kind === 'pdf') autoAlign();
+  } else if (kind === 'docx') {
+    rangeDiv.hidden = true; metaDiv.hidden = false;
+    metaDiv.textContent = '讀取 Word 文件中…';
+    try {
+      const blocks = await parseDocx(f);
+      if (input.files[0] !== f) return;
+      const pCount = blocks.filter(b => b.type === 'text').length;
+      const tCount = blocks.filter(b => b.type === 'table').length;
+      slotMeta[k].parsed = blocks;
+      metaDiv.textContent = `Word 文件，共 ${pCount} 個段落` + (tCount ? `、${tCount} 個表格` : '');
+    } catch (e) {
+      if (input.files[0] !== f) return;
+      metaDiv.textContent = '無法讀取這個 Word 檔案：' + e.message;
+    }
+    syncControls();
+  } else if (kind === 'excel') {
+    rangeDiv.hidden = true; metaDiv.hidden = false;
+    metaDiv.textContent = '讀取 Excel 活頁簿中…';
+    try {
+      const wb = await parseExcel(f);
+      if (input.files[0] !== f) return;
+      slotMeta[k].parsed = wb;
+      const list = wb.sheets.map(s => s.name).join('、');
+      metaDiv.textContent = `Excel 活頁簿，共 ${wb.sheets.length} 個工作表（${list}）`;
+    } catch (e) {
+      if (input.files[0] !== f) return;
+      metaDiv.textContent = '無法讀取這個 Excel 檔案：' + e.message;
+    }
+    syncControls();
+  } else {
+    rangeDiv.hidden = true; metaDiv.hidden = false;
+    metaDiv.textContent = kind === 'doc-legacy' ? '不支援舊版 .doc 格式，請先另存為 .docx' : '不支援的檔案格式';
+    syncControls();
+  }
 }
 
 // Auto-align: find the page offset where the most page pairs share nearly the same words.
@@ -357,7 +530,7 @@ const role = k => k === revised() ? '修正版' : '原版';
 
 async function autoAlign() {
   const f1 = $('f1').files[0], f2 = $('f2').files[0];
-  if (!f1 || !f2) return;
+  if (!f1 || !f2 || slotMeta[1]?.kind !== 'pdf' || slotMeta[2]?.kind !== 'pdf') return;
   $('status').textContent = '正在自動對齊頁碼…';
   try {
     const [A, B] = await Promise.all([pageSets($('f1')), pageSets($('f2'))]);
@@ -386,10 +559,14 @@ function setFile(k, file) {
 
 // Drop anywhere: two files fill both slots in order; one file goes to the slot it was dropped on, else the first empty one.
 function dropFiles(files, target) {
-  const pdfs = [...files].filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
-  if (!pdfs.length) { $('status').textContent = '只能放入 PDF 檔。'; return; }
-  if (pdfs.length > 1) { setFile(1, pdfs[0]); setFile(2, pdfs[1]); return; }
-  setFile(target ?? ($('f1').files[0] && !$('f2').files[0] ? 2 : 1), pdfs[0]);
+  const list = [...files];
+  if (list.some(f => fileKind(f) === 'doc-legacy') && !list.some(f => ['pdf', 'docx', 'excel'].includes(fileKind(f)))) {
+    $('status').textContent = '不支援舊版 .doc 格式，請先用 Word 另存為 .docx。'; return;
+  }
+  const valid = list.filter(f => ['pdf', 'docx', 'excel'].includes(fileKind(f)));
+  if (!valid.length) { $('status').textContent = '請放入 PDF、Word（.docx）或 Excel（.xlsx / .xls / .csv）檔案。'; return; }
+  if (valid.length > 1) { setFile(1, valid[0]); setFile(2, valid[1]); return; }
+  setFile(target ?? ($('f1').files[0] && !$('f2').files[0] ? 2 : 1), valid[0]);
 }
 
 // The user marks which slot holds the revised file; the other is the original.
@@ -404,12 +581,14 @@ for (const k of [1, 2]) {
   slot.ondragleave = () => slot.classList.remove('over');
   slot.ondrop = e => { e.preventDefault(); e.stopPropagation(); slot.classList.remove('over'); dropFiles(e.dataTransfer.files, k); };
 }
+const mimeOf = n => n.endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  : n.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
 for (const btn of document.querySelectorAll('.sample')) btn.onclick = async () => {
   try {
-    const get = async n => new File([await (await fetch('samples/' + n)).blob()], n, { type: 'application/pdf' });
+    const get = async n => new File([await (await fetch('samples/' + n)).blob()], n, { type: mimeOf(n) });
     const [a, b] = await Promise.all(btn.dataset.files.split(' ').map(get));
     document.querySelector('input[name=rev][value="2"]').checked = true; roles();
-    $('p1').value = $('p2').value = 1; // auto-align keeps old start pages when it finds no match
+    $('p1').value = $('p2').value = 1;
     setFile(1, a); setFile(2, b);
   } catch { $('status').textContent = '無法載入範例檔案。'; }
 };
@@ -453,11 +632,20 @@ const download = (blob, name) => {
 };
 
 $('csv').onclick = () => {
-  // Leading = + @ would make Excel run the cell as a formula; the PDF text is untrusted.
+  // Leading = + @ would make Excel run the cell as a formula; the file text is untrusted.
   const q = v => { v = String(v ?? ''); if (/^[=+@\t\r]/.test(v)) v = "'" + v; return `"${v.replace(/"/g, '""')}"`; };
   const kind = n => n.msg ? '說明' : n.d && n.i ? '修改' : n.d ? '刪除' : '新增';
-  const rows = [['原版頁碼', '修正版頁碼', '類型', '原版內容', '修正版內容'],
-    ...results.flatMap(r => r.notes.map(n => [r.a, r.b, kind(n), n.msg ?? n.d, n.msg ? '' : n.i]))];
+  let rows;
+  if (currentFormat === 'pdf') {
+    rows = [['原版頁碼', '修正版頁碼', '類型', '原版內容', '修正版內容'],
+      ...results.flatMap(r => r.notes.map(n => [r.a, r.b, kind(n), n.msg ?? n.d, n.msg ? '' : n.i]))];
+  } else if (currentFormat === 'excel') {
+    rows = [['工作表', '儲存格 / 列', '類型', '原版內容', '修正版內容'],
+      ...exportEntries.map(n => [n.sheet, n.loc, n.type, n.d, n.i])];
+  } else {
+    rows = [['位置', '類型', '原版內容', '修正版內容'],
+      ...exportEntries.map(n => [n.loc, n.type, n.d, n.i])];
+  }
   download(new Blob(['\ufeff' + rows.map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv' }), 'diffpdf-差異清單.csv');
 };
 
@@ -543,83 +731,541 @@ $('vside').onclick = () => { overlay = false; drawViewer(); };
 $('vover').onclick = () => { overlay = true; drawViewer(); };
 $('vclose').onclick = () => $('viewer').close();
 
+function renderTextReportPages(title, rows) {
+  const W = 1200, H = 1600, M = 48, F = 20, LH = 30;
+  const pages = [];
+  let c = document.createElement('canvas'), ctx = c.getContext('2d'), y = M;
+  const newPage = () => {
+    c = document.createElement('canvas'); c.width = W; c.height = H;
+    ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = 'top'; y = M; pages.push(c);
+  };
+  newPage();
+  ctx.fillStyle = '#1B2430'; ctx.font = `bold 24px sans-serif`;
+  ctx.fillText(title, M, y); y += 38;
+  ctx.font = `18px sans-serif`; ctx.fillStyle = '#5A6573';
+  ctx.fillText(`${names[0]}  ↔  ${names[1]}`, M, y); y += 36;
+  ctx.strokeStyle = '#CDD4DC'; ctx.beginPath(); ctx.moveTo(M, y); ctx.lineTo(W - M, y); ctx.stroke(); y += 20;
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const r = rows[idx];
+    ctx.font = `bold ${F}px sans-serif`;
+    const head = `${idx + 1}. [${r.sheet ? r.sheet + ' · ' : ''}${r.loc}] ${r.type}`;
+    const dLines = r.d ? wrap(ctx, `原版：${r.d}`, W - M * 2 - 20) : [];
+    const iLines = r.i ? wrap(ctx, `修正：${r.i}`, W - M * 2 - 20) : [];
+    const need = LH + (dLines.length + iLines.length) * LH + 14;
+    if (y + need > H - M) newPage();
+    ctx.fillStyle = '#1B2430'; ctx.font = `bold ${F}px sans-serif`;
+    ctx.fillText(head, M, y); y += LH;
+    ctx.font = `${F}px sans-serif`;
+    ctx.fillStyle = '#B42318';
+    for (const l of dLines) { ctx.fillText(l, M + 20, y); y += LH; }
+    ctx.fillStyle = '#1F4E8C';
+    for (const l of iLines) { ctx.fillText(l, M + 20, y); y += LH; }
+    y += 14;
+  }
+  return pages;
+}
+
 $('save').onclick = () => {
   let pdf;
-  for (const r of results) {
-    const c = composite(r), size = [c.width, c.height], o = c.width > c.height ? 'l' : 'p';
+  const canvases = currentFormat === 'pdf'
+    ? results.map(r => composite(r))
+    : renderTextReportPages($('total').textContent || '差異報告', exportEntries);
+  for (const c of canvases) {
+    const size = [c.width, c.height], o = c.width > c.height ? 'l' : 'p';
     if (!pdf) pdf = new window.jspdf.jsPDF({ orientation: o, unit: 'px', format: size, hotfixes: ['px_scaling'] });
     else pdf.addPage(size, o);
     pdf.addImage(c.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, c.width, c.height);
   }
-  pdf.save('diffpdf-result.pdf');
+  pdf.save(currentFormat === 'pdf' ? 'diffpdf-result.pdf' : 'diff-result.pdf');
 };
 
+function lcsHunks(a, b, keyFn = x => x) {
+  let s = 0, ea = a.length, eb = b.length;
+  while (s < ea && s < eb && keyFn(a[s]) === keyFn(b[s])) s++;
+  while (ea > s && eb > s && keyFn(a[ea - 1]) === keyFn(b[eb - 1])) { ea--; eb--; }
+  const n = ea - s, m = eb - s, out = [];
+  if (s > 0) for (let k = 0; k < s; k++) out.push({ type: 'eq', a: a[k], b: b[k], ia: k, ib: k });
+  if (n * m > 4_000_000) {
+    const minLen = Math.min(n, m);
+    for (let k = 0; k < minLen; k++) {
+      if (keyFn(a[s + k]) === keyFn(b[s + k])) out.push({ type: 'eq', a: a[s + k], b: b[s + k], ia: s + k, ib: s + k });
+      else out.push({ type: 'diff', d: [{ item: a[s + k], idx: s + k }], i: [{ item: b[s + k], idx: s + k }] });
+    }
+    if (n > minLen) out.push({ type: 'diff', d: a.slice(s + minLen, ea).map((item, idx) => ({ item, idx: s + minLen + idx })), i: [] });
+    if (m > minLen) out.push({ type: 'diff', d: [], i: b.slice(s + minLen, eb).map((item, idx) => ({ item, idx: s + minLen + idx })) });
+  } else {
+    const W = m + 1, L = new Uint32Array((n + 1) * W);
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      L[i * W + j] = keyFn(a[s + i]) === keyFn(b[s + j]) ? L[(i + 1) * W + j + 1] + 1 : Math.max(L[(i + 1) * W + j], L[i * W + j + 1]);
+    let cur = null, i = 0, j = 0;
+    const flush = () => { if (cur) out.push(cur); cur = null; };
+    while (i < n && j < m) {
+      if (keyFn(a[s + i]) === keyFn(b[s + j])) {
+        flush(); out.push({ type: 'eq', a: a[s + i], b: b[s + j], ia: s + i, ib: s + j }); i++; j++;
+      } else if (L[(i + 1) * W + j] >= L[i * W + j + 1]) {
+        (cur ??= { type: 'diff', d: [], i: [] }).d.push({ item: a[s + i], idx: s + i }); i++;
+      } else {
+        (cur ??= { type: 'diff', d: [], i: [] }).i.push({ item: b[s + j], idx: s + j }); j++;
+      }
+    }
+    while (i < n) (cur ??= { type: 'diff', d: [], i: [] }).d.push({ item: a[s + i], idx: s + i++ });
+    while (j < m) (cur ??= { type: 'diff', d: [], i: [] }).i.push({ item: b[s + j], idx: s + j++ });
+    flush();
+  }
+  for (let k = 0; k < a.length - ea; k++) out.push({ type: 'eq', a: a[ea + k], b: b[eb + k], ia: ea + k, ib: eb + k });
+  return out;
+}
+
+const colName = idx => { let s = '', n = idx + 1; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
+
+function buildInlineDiff(str1, str2, mode) {
+  const t1 = tokenizeStr(str1, mode), t2 = tokenizeStr(str2, mode);
+  const hunks = lcsHunks(t1, t2, x => x.t);
+  const leftNodes = [], rightNodes = [], notes = [];
+  for (const h of hunks) {
+    if (h.type === 'eq') {
+      const txt = h.a.t + (mode === 'words' ? ' ' : '');
+      leftNodes.push(txt); rightNodes.push(txt);
+    } else {
+      const dTxt = tokensToText(h.d.map(x => x.item)), iTxt = tokensToText(h.i.map(x => x.item));
+      if (dTxt) leftNodes.push(el('del', { textContent: dTxt + (mode === 'words' ? ' ' : '') }));
+      if (iTxt) rightNodes.push(el('ins', { textContent: iTxt + (mode === 'words' ? ' ' : '') }));
+      notes.push({ d: dTxt, i: iTxt });
+    }
+  }
+  return { leftNodes, rightNodes, notes };
+}
+
+function diffRows(rows1, rows2, mode) {
+  const rowKey = r => r.map(c => normText(c.text ?? c)).join('\x00');
+  const hunks = lcsHunks(rows1, rows2, rowKey);
+  const outRows = [], notes = [];
+  let maxCols = Math.max(1, ...rows1.map(r => r.length), ...rows2.map(r => r.length));
+  const cellText = c => typeof c === 'string' ? c : (c?.text ?? '');
+  const cellFormula = c => typeof c === 'string' ? '' : (c?.formula ?? '');
+
+  for (const h of hunks) {
+    if (h.type === 'eq') {
+      outRows.push({ kind: 'eq', r1: h.ia + 1, r2: h.ib + 1, cells: h.a.map(c => ({ kind: 'eq', text: cellText(c) })) });
+    } else {
+      const paired = Math.min(h.d.length, h.i.length);
+      for (let k = 0; k < paired; k++) {
+        const ra = h.d[k], rb = h.i[k], cells = [];
+        const cols = Math.max(ra.item.length, rb.item.length);
+        maxCols = Math.max(maxCols, cols);
+        let rowChanged = false;
+        for (let c = 0; c < cols; c++) {
+          const v1 = cellText(ra.item[c]), v2 = cellText(rb.item[c]);
+          const f1 = cellFormula(ra.item[c]), f2 = cellFormula(rb.item[c]);
+          if (normText(v1) === normText(v2) && f1 === f2) {
+            cells.push({ kind: 'eq', text: v2 });
+          } else {
+            rowChanged = true;
+            const dStr = f1 && v1 !== f1 ? `${v1} (${f1})` : v1;
+            const iStr = f2 && v2 !== f2 ? `${v2} (${f2})` : v2;
+            cells.push({ kind: 'mod', d: dStr, i: iStr });
+            notes.push({ loc: `${colName(c)}${rb.idx + 1}`, type: '修改', d: dStr, i: iStr });
+          }
+        }
+        outRows.push({ kind: rowChanged ? 'mod' : 'eq', r1: ra.idx + 1, r2: rb.idx + 1, cells });
+      }
+      for (let k = paired; k < h.d.length; k++) {
+        const ra = h.d[k], txt = ra.item.map(cellText).filter(Boolean).join(' | ');
+        outRows.push({ kind: 'del', r1: ra.idx + 1, r2: '', cells: ra.item.map(c => ({ kind: 'del', text: cellText(c) })) });
+        notes.push({ loc: `原第 ${ra.idx + 1} 列`, type: '刪除', d: txt, i: '' });
+      }
+      for (let k = paired; k < h.i.length; k++) {
+        const rb = h.i[k], txt = rb.item.map(cellText).filter(Boolean).join(' | ');
+        outRows.push({ kind: 'ins', r1: '', r2: rb.idx + 1, cells: rb.item.map(c => ({ kind: 'ins', text: cellText(c) })) });
+        notes.push({ loc: `修第 ${rb.idx + 1} 列`, type: '新增', d: '', i: txt });
+      }
+    }
+  }
+  return { rows: outRows, maxCols, notes };
+}
+
+function renderDocTable(rows, side) {
+  const tbl = el('table', { className: 'doc-mini' });
+  for (const r of rows) {
+    const tr = el('tr');
+    for (const c of r) tr.append(el('td', { textContent: typeof c === 'string' ? c : (c?.text ?? '') }));
+    tbl.append(tr);
+  }
+  return el('div', { className: 'doc-table-wrap' }, tbl);
+}
+
+function renderDiffTable(diffRes) {
+  const tbl = el('table', { className: 'doc-mini' });
+  for (const r of diffRes.rows) {
+    const tr = el('tr', { className: r.kind === 'del' ? 'row-del' : r.kind === 'ins' ? 'row-ins' : '' });
+    for (let c = 0; c < diffRes.maxCols; c++) {
+      const cell = r.cells[c];
+      if (!cell) tr.append(el('td'));
+      else if (cell.kind === 'mod') tr.append(el('td', { className: 'cell-mod' }, el('del', { textContent: cell.d }), ' ', el('ins', { textContent: cell.i })));
+      else if (cell.kind === 'del') tr.append(el('td', {}, el('del', { textContent: cell.text })));
+      else if (cell.kind === 'ins') tr.append(el('td', {}, el('ins', { textContent: cell.text })));
+      else tr.append(el('td', { textContent: cell.text }));
+    }
+    tbl.append(tr);
+  }
+  return el('div', { className: 'doc-table-wrap' }, tbl);
+}
+
+async function extractPdfBlocks(file) {
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const blocks = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const items = (await page.getTextContent()).items.filter(it => it.str.trim()).map(it => ({
+      str: it.str, x: it.transform[4], y: it.transform[5], h: Math.hypot(it.transform[2], it.transform[3]) || 12
+    }));
+    items.sort((a, b) => Math.abs(b.y - a.y) > Math.min(a.h, b.h) / 2 ? b.y - a.y : a.x - b.x);
+    let line = '', prevY = null, prevH = 12;
+    for (const it of items) {
+      if (prevY !== null && Math.abs(prevY - it.y) > Math.min(prevH, it.h) / 2) {
+        if (line.trim()) blocks.push({ type: 'text', tag: 'p', text: line.trim(), page: n });
+        line = '';
+      }
+      line += (line && !line.endsWith(' ') ? ' ' : '') + it.str;
+      prevY = it.y; prevH = it.h;
+    }
+    if (line.trim()) blocks.push({ type: 'text', tag: 'p', text: line.trim(), page: n });
+  }
+  return blocks;
+}
+
+function compareBlocks(blocks1, blocks2, mode) {
+  const keyFn = b => b.type === 'table'
+    ? 'TBL:' + b.rows.map(r => r.map(normText).join('|')).join('\n')
+    : 'TXT:' + normText(b.text);
+  const hunks = lcsHunks(blocks1, blocks2, keyFn);
+  const items = [], notes = [];
+  let changes = 0;
+
+  for (const h of hunks) {
+    if (h.type === 'eq') {
+      items.push({ kind: 'eq', a: h.a, b: h.b, ia: h.ia + 1, ib: h.ib + 1 });
+      continue;
+    }
+    let i1 = 0, i2 = 0;
+    while (i1 < h.d.length && i2 < h.i.length) {
+      const b1 = h.d[i1], b2 = h.i[i2];
+      if (b1.item.type === 'text' && b2.item.type === 'text') {
+        const loc = `段落 ${b1.idx + 1} ↔ ${b2.idx + 1}`;
+        const inl = buildInlineDiff(b1.item.text, b2.item.text, mode);
+        items.push({ kind: 'mod-text', a: b1.item, b: b2.item, ia: b1.idx + 1, ib: b2.idx + 1, inl });
+        for (const n of inl.notes) notes.push({ loc, type: n.d && n.i ? '修改' : n.d ? '刪除' : '新增', d: n.d, i: n.i });
+        changes++; i1++; i2++;
+      } else if (b1.item.type === 'table' && b2.item.type === 'table') {
+        const tblDiff = diffRows(b1.item.rows, b2.item.rows, mode);
+        items.push({ kind: 'mod-table', a: b1.item, b: b2.item, ia: b1.idx + 1, ib: b2.idx + 1, tblDiff });
+        for (const n of tblDiff.notes) notes.push({ loc: `表格 #${b1.idx + 1} (${n.loc})`, type: n.type, d: n.d, i: n.i });
+        changes++; i1++; i2++;
+      } else {
+        break;
+      }
+    }
+    while (i1 < h.d.length) {
+      const b1 = h.d[i1++];
+      const txt = b1.item.type === 'table' ? '[表格] ' + b1.item.rows.map(r => r.join(' | ')).join(' / ') : b1.item.text;
+      items.push({ kind: 'del', a: b1.item, ia: b1.idx + 1 });
+      notes.push({ loc: `原段落 ${b1.idx + 1}`, type: '刪除', d: txt, i: '' });
+      changes++;
+    }
+    while (i2 < h.i.length) {
+      const b2 = h.i[i2++];
+      const txt = b2.item.type === 'table' ? '[表格] ' + b2.item.rows.map(r => r.join(' | ')).join(' / ') : b2.item.text;
+      items.push({ kind: 'ins', b: b2.item, ib: b2.idx + 1 });
+      notes.push({ loc: `修段落 ${b2.idx + 1}`, type: '新增', d: '', i: txt });
+      changes++;
+    }
+  }
+  return { items, notes, changes };
+}
+
+function renderDocDiff(res, isCrossFormat) {
+  const out = $('out');
+  if (isCrossFormat) {
+    out.append(el('div', { className: 'notice', textContent: '跨格式文字比對（PDF ↔ Word）：依閱讀順序擷取純文字段落進行逐字 / 逐詞比對，版面樣式不列入比較。' }));
+  }
+  if (!res.changes) {
+    out.append(el('div', { className: 'empty' }, el('strong', { textContent: '兩份文件文字相同' }), `比對了 ${res.items.length} 個區塊，沒有找到差異。`));
+    $('status').textContent = '比對完成。';
+    return;
+  }
+
+  let onlyDiff = true;
+  const wrap = el('div', { className: 'doc-diff' });
+  const toggleBtn = el('button', { className: 'filter-btn', textContent: '顯示全文' });
+
+  function draw() {
+    wrap.innerHTML = '';
+    const keep = new Set();
+    if (onlyDiff) {
+      res.items.forEach((it, idx) => {
+        if (it.kind !== 'eq') { keep.add(idx - 1); keep.add(idx); keep.add(idx + 1); }
+      });
+    }
+    let skipped = 0;
+    const flushSkip = () => { if (skipped) { wrap.append(el('div', { className: 'doc-skip', textContent: `… 略過 ${skipped} 段相同內容 …` })); skipped = 0; } };
+
+    res.items.forEach((it, idx) => {
+      if (onlyDiff && !keep.has(idx)) { skipped++; return; }
+      flushSkip();
+      const row = el('div', { className: 'doc-row' + (it.kind === 'del' ? ' is-del' : it.kind === 'ins' ? ' is-ins' : it.kind !== 'eq' ? ' is-mod' : '') });
+      const cell = (num, content) => {
+        const c = el('div', { className: 'doc-cell' });
+        if (num) c.append(el('span', { className: 'bnum', textContent: `#${num}` }));
+        if (content) c.append(content);
+        return c;
+      };
+      if (it.kind === 'eq') {
+        const make = (b, n) => cell(n, b.type === 'table' ? renderDocTable(b.rows) : el(b.tag || 'p', { textContent: b.text }));
+        row.append(make(it.a, it.ia), make(it.b, it.ib));
+      } else if (it.kind === 'mod-text') {
+        row.append(
+          cell(it.ia, el(it.a.tag || 'p', {}, ...it.inl.leftNodes)),
+          cell(it.ib, el(it.b.tag || 'p', {}, ...it.inl.rightNodes))
+        );
+      } else if (it.kind === 'mod-table') {
+        row.append(
+          cell(it.ia, renderDocTable(it.a.rows)),
+          cell(it.ib, renderDiffTable(it.tblDiff))
+        );
+      } else if (it.kind === 'del') {
+        row.append(cell(it.ia, it.a.type === 'table' ? renderDocTable(it.a.rows) : el(it.a.tag || 'p', {}, el('del', { textContent: it.a.text }))), cell('', null));
+      } else if (it.kind === 'ins') {
+        row.append(cell('', null), cell(it.ib, it.b.type === 'table' ? renderDocTable(it.b.rows) : el(it.b.tag || 'p', {}, el('ins', { textContent: it.b.text }))));
+      }
+      wrap.append(row);
+    });
+    flushSkip();
+  }
+
+  toggleBtn.onclick = () => { onlyDiff = !onlyDiff; toggleBtn.textContent = onlyDiff ? '顯示全文' : '只看差異'; draw(); };
+  draw();
+
+  const shownNotes = res.notes.slice(0, MAX_NOTES);
+  const ol = el('ol', { className: 'notes' }, ...shownNotes.map(n => {
+    const body = [el('strong', { textContent: `[${n.loc}] ` }), ...(n.d ? [el('del', { textContent: n.d })] : []), ...(n.i ? [el('ins', { textContent: n.i })] : [])];
+    return el('li', {}, el('span', {}, ...body));
+  }));
+  if (res.notes.length > MAX_NOTES) ol.append(el('li', {}, el('span', { textContent: `另有 ${res.notes.length - MAX_NOTES} 處差異未列出` })));
+
+  out.append(el('section', { className: 'pair', id: 'doc1' },
+    el('header', {}, el('h2', { textContent: '文件內容比對' }), el('span', { className: 'count', textContent: `${res.notes.length} 處差異` }), toggleBtn),
+    wrap, ol));
+
+  exportEntries = res.notes;
+  $('total').textContent = `共發現 ${res.notes.length} 處差異`;
+  $('jump').append(el('a', { href: '#doc1', textContent: '文件內容' }));
+  $('summary').hidden = false;
+  $('status').textContent = '比對完成。';
+}
+
+function matchSheets(wb1, wb2) {
+  const s1 = wb1.sheets, s2 = wb2.sheets;
+  if (s1.length === 1 && s2.length === 1 && s1[0].name !== s2[0].name) {
+    return [{ name: `${s1[0].name} ↔ ${s2[0].name}`, a: s1[0], b: s2[0], renamed: true }];
+  }
+  const map2 = new Map(s2.map(s => [s.name, s])), used = new Set(), pairs = [];
+  for (const a of s1) {
+    const b = map2.get(a.name) ?? null;
+    if (b) used.add(b.name);
+    pairs.push({ name: a.name, a, b });
+  }
+  for (const b of s2) if (!used.has(b.name)) pairs.push({ name: b.name, a: null, b });
+  return pairs;
+}
+
+function renderExcelDiff(wb1, wb2, mode) {
+  const pairs = matchSheets(wb1, wb2), out = $('out');
+  let differ = 0;
+  exportEntries = [];
+
+  pairs.forEach((p, idx) => {
+    const id = 'sheet' + (idx + 1);
+    let diffRes, sheetMsg = '';
+    if (!p.a || !p.b) {
+      const only = p.a ? '原版' : '修正版', rows = (p.a || p.b).rows;
+      sheetMsg = `僅存在於${only}（共 ${rows.length} 列）`;
+      diffRes = {
+        rows: rows.map((r, rIdx) => ({ kind: p.a ? 'del' : 'ins', r1: p.a ? rIdx + 1 : '', r2: p.b ? rIdx + 1 : '', cells: r.map(c => ({ kind: p.a ? 'del' : 'ins', text: c.text })) })),
+        maxCols: Math.max(1, ...rows.map(r => r.length)),
+        notes: [{ loc: '整張工作表', type: p.a ? '刪除' : '新增', d: p.a ? sheetMsg : '', i: p.b ? sheetMsg : '' }]
+      };
+    } else {
+      diffRes = diffRows(p.a.rows, p.b.rows, mode);
+    }
+    if (!diffRes.notes.length) return;
+    differ++;
+    for (const n of diffRes.notes) exportEntries.push({ sheet: p.name, ...n });
+
+    let onlyDiff = true;
+    const toggleBtn = el('button', { className: 'filter-btn', textContent: '顯示全部列' });
+    const tableWrap = el('div', { className: 'sheet-wrap' });
+
+    function drawTable() {
+      const tbl = el('table', { className: 'sheet-diff' });
+      const thead = el('thead'), htr = el('tr');
+      htr.append(el('th', { className: 'rnum', textContent: '原列' }), el('th', { className: 'rnum', textContent: '修列' }));
+      for (let c = 0; c < diffRes.maxCols; c++) htr.append(el('th', { textContent: colName(c) }));
+      thead.append(htr); tbl.append(thead);
+
+      const tbody = el('tbody');
+      const keep = new Set([0]);
+      if (onlyDiff) {
+        diffRes.rows.forEach((r, rIdx) => {
+          if (r.kind !== 'eq') { keep.add(rIdx - 1); keep.add(rIdx); keep.add(rIdx + 1); }
+        });
+      }
+      let skipped = 0;
+      const flushSkip = () => {
+        if (skipped) {
+          tbody.append(el('tr', { className: 'row-skip' }, el('td', { colSpan: diffRes.maxCols + 2, textContent: `… 略過 ${skipped} 列相同資料 …` })));
+          skipped = 0;
+        }
+      };
+
+      diffRes.rows.forEach((r, rIdx) => {
+        if (onlyDiff && !keep.has(rIdx)) { skipped++; return; }
+        flushSkip();
+        const tr = el('tr', { className: r.kind === 'del' ? 'row-del' : r.kind === 'ins' ? 'row-ins' : '' });
+        tr.append(el('td', { className: 'rnum', textContent: r.r1 }), el('td', { className: 'rnum', textContent: r.r2 }));
+        for (let c = 0; c < diffRes.maxCols; c++) {
+          const cell = r.cells[c];
+          if (!cell) tr.append(el('td'));
+          else if (cell.kind === 'mod') tr.append(el('td', { className: 'cell-mod' }, el('del', { textContent: cell.d }), ' ', el('ins', { textContent: cell.i })));
+          else if (cell.kind === 'del') tr.append(el('td', {}, el('del', { textContent: cell.text })));
+          else if (cell.kind === 'ins') tr.append(el('td', {}, el('ins', { textContent: cell.text })));
+          else tr.append(el('td', { textContent: cell.text }));
+        }
+        tbody.append(tr);
+      });
+      flushSkip();
+      tbl.append(tbody);
+      tableWrap.replaceChildren(tbl);
+    }
+
+    toggleBtn.onclick = () => { onlyDiff = !onlyDiff; toggleBtn.textContent = onlyDiff ? '顯示全部列' : '只看差異列'; drawTable(); };
+    drawTable();
+
+    const shownNotes = diffRes.notes.slice(0, MAX_NOTES);
+    const ol = el('ol', { className: 'notes' }, ...shownNotes.map(n => {
+      const body = [el('strong', { textContent: `[${n.loc}] ` }), ...(n.d ? [el('del', { textContent: n.d })] : []), ...(n.i ? [el('ins', { textContent: n.i })] : [])];
+      return el('li', {}, el('span', {}, ...body));
+    }));
+    if (diffRes.notes.length > MAX_NOTES) ol.append(el('li', {}, el('span', { textContent: `另有 ${diffRes.notes.length - MAX_NOTES} 處差異未列出` })));
+
+    out.append(el('section', { className: 'pair', id },
+      el('header', {}, el('h2', { textContent: p.name }), el('span', { className: 'count', textContent: sheetMsg || `${diffRes.notes.length} 處差異` }), toggleBtn),
+      tableWrap, ol));
+    $('jump').append(el('a', { href: '#' + id, textContent: p.name }));
+  });
+
+  if (differ) {
+    $('total').textContent = `${pairs.length} 個工作表中共有 ${differ} 個不同`;
+    $('summary').hidden = false;
+    $('status').textContent = '比對完成。';
+  } else {
+    out.append(el('div', { className: 'empty' }, el('strong', { textContent: '兩份活頁簿相同' }), `比對了 ${pairs.length} 個工作表，沒有找到差異。`));
+    $('status').textContent = '比對完成。';
+  }
+}
+
 $('go').onclick = async () => {
-  if (!$('f1').files[0] || !$('f2').files[0]) { $('status').textContent = '請先放入原版和修正版兩個 PDF。'; return; }
+  if (!$('f1').files[0] || !$('f2').files[0]) { $('status').textContent = '請先放入原版和修正版兩個檔案。'; return; }
   const mode = document.querySelector('input[name=mode]:checked').value, out = $('out'), bar = $('bar');
   out.innerHTML = ''; $('jump').innerHTML = ''; $('summary').hidden = true;
   const R = revised(), O = 3 - R; // original goes on the left, revised on the right
-  results = []; names = [$('f' + O).files[0].name, $('f' + R).files[0].name];
+  results = []; exportEntries = [];
+  const fO = $('f' + O).files[0], fR = $('f' + R).files[0];
+  const kO = slotMeta[O]?.kind, kR = slotMeta[R]?.kind;
+  names = [fO.name, fR.name];
+
+  if (!kO || !kR || kO === 'doc-legacy' || kR === 'doc-legacy') {
+    $('status').textContent = '請放入支援的檔案格式（PDF、.docx、.xlsx / .xls / .csv）。'; return;
+  }
+  if ((kO === 'excel') !== (kR === 'excel')) {
+    $('status').textContent = 'Excel 只能與 Excel 比對；PDF 與 Word 可互相或各自比對。'; return;
+  }
+
   $('go').disabled = true; bar.hidden = false;
   try {
-    const [d1, d2] = await Promise.all([load($('f' + O)), load($('f' + R))]);
-    // Start pages let a file with extra leading pages line up (a lite version of DiffPDF's page ranges).
-    const s1 = Math.max(1, +$('p' + O).value || 1), s2 = Math.max(1, +$('p' + R).value || 1);
-    const total = Math.max(d1.numPages - s1, d2.numPages - s2) + 1, m = margins();
-    let differ = 0;
-    for (let k = 0; k < total; k++) {
-      const a = s1 + k, b = s2 + k, label = a === b ? `第 ${a} 頁` : `第 ${a} ↔ ${b} 頁`;
-      $('status').textContent = `比對中 ${k + 1} / ${total}`;
-      bar.max = total; bar.value = k;
-      const [r1, r2] = await Promise.all([render(d1, a), render(d2, b)]);
-      let notes;
-      if (!r1.page || !r2.page) notes = [{ msg: `${r1.page ? '修正版' : '原版'}沒有這一頁` }];
-      else if (mode === 'appearance') {
-        const px = pixelDiff(r1.canvas, r2.canvas, m);
-        notes = px ? [{ msg: `${px.toLocaleString()} 個像素不同（${(px / (r1.canvas.width * r1.canvas.height) * 100).toFixed(2)}%）` }] : [];
-      } else {
-        const [a, b, hunks] = diff(await tokens(r1.page, r1.vp, mode, m), await tokens(r2.page, r2.vp, mode, m));
-        mark(r1.canvas, a); mark(r2.canvas, b);
-        const txt = ts => ts.map(t => t.t).join(' ').replace(new RegExp(`(?<=[${CJK}]) (?=[${CJK}])`, 'gu'), '');
-        const box = ts => {
-          if (!ts.length) return null;
-          const x = Math.min(...ts.map(t => t.x)), y = Math.min(...ts.map(t => t.y));
-          return { x, y, w: Math.max(...ts.map(t => t.x + t.w)) - x, h: Math.max(...ts.map(t => t.y + t.h)) - y };
-        };
-        notes = hunks.map(h => ({ d: txt(h.d), i: txt(h.i), bd: box(h.d), bi: box(h.i) }));
-        if (notes.length > MAX_NOTES) notes = [...notes.slice(0, MAX_NOTES), { msg: `另有 ${notes.length - MAX_NOTES} 處差異未列出` }];
-      }
-      if (!notes.length) continue;
-      differ++;
-      shade(r1.canvas, m); shade(r2.canvas, m);
-      const entry = { label, a, b, c1: r1.canvas, c2: r2.canvas, p1: r1.page, p2: r2.page, notes };
-      results.push(entry);
-      for (const c of [r1.canvas, r2.canvas]) Object.assign(c, {
-        tabIndex: 0, title: '放大檢視', onclick: () => openViewer(entry),
-        onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openViewer(entry); } },
-      });
-      const id = 'pg' + (k + 1), short = a === b ? `${a}` : `${a}↔${b}`;
-      const count = notes.some(n => n.msg) ? '' : `${notes.length} 處修改`;
-      out.append(el('section', { className: 'pair', id },
-        el('header', {}, el('h2', { textContent: label }), el('span', { className: 'count', textContent: count })),
-        el('div', { className: 'sides' },
-          el('figure', {}, el('figcaption', { textContent: `原版　${names[0]}　p.${a}` }), r1.canvas),
-          el('figure', {}, el('figcaption', { textContent: `修正版　${names[1]}　p.${b}` }), r2.canvas)),
-        el('ol', { className: 'notes' }, ...notes.map(n => {
-          const body = n.msg ? [n.msg] : [...(n.d ? [el('del', { textContent: n.d })] : []), ...(n.i ? [el('ins', { textContent: n.i })] : [])];
-          return el('li', {}, n.bd || n.bi
-            ? el('button', { className: 'note', title: '放大檢視這處修改', onclick: () => openViewer(entry, n) }, ...body)
-            : el('span', {}, ...body));
-        }))));
-      $('jump').append(el('a', { href: '#' + id, textContent: short }));
-    }
-    if (differ) {
-      $('total').textContent = `${total} 組頁面中有 ${differ} 組不同`;
-      $('summary').hidden = false;
-      $('status').textContent = '比對完成。';
+    if (kO === 'excel' && kR === 'excel') {
+      currentFormat = 'excel';
+      $('status').textContent = '比對工作表中…';
+      const wb1 = slotMeta[O].parsed ?? await parseExcel(fO);
+      const wb2 = slotMeta[R].parsed ?? await parseExcel(fR);
+      renderExcelDiff(wb1, wb2, mode);
+    } else if ((kO === 'docx' || kR === 'docx')) {
+      currentFormat = (kO === 'docx' && kR === 'docx') ? 'docx' : 'cross';
+      $('status').textContent = '解析與比對文件中…';
+      const b1 = kO === 'docx' ? (slotMeta[O].parsed ?? await parseDocx(fO)) : await extractPdfBlocks(fO);
+      const b2 = kR === 'docx' ? (slotMeta[R].parsed ?? await parseDocx(fR)) : await extractPdfBlocks(fR);
+      renderDocDiff(compareBlocks(b1, b2, mode), currentFormat === 'cross');
     } else {
-      out.append(el('div', { className: 'empty' }, el('strong', { textContent: '兩份檔案相同' }), `比對了 ${total} 組頁面，沒有找到差異。`));
-      $('status').textContent = '比對完成。';
+      currentFormat = 'pdf';
+      const [d1, d2] = await Promise.all([load($('f' + O)), load($('f' + R))]);
+      // Start pages let a file with extra leading pages line up (a lite version of DiffPDF's page ranges).
+      const s1 = Math.max(1, +$('p' + O).value || 1), s2 = Math.max(1, +$('p' + R).value || 1);
+      const total = Math.max(d1.numPages - s1, d2.numPages - s2) + 1, m = margins();
+      let differ = 0;
+      for (let k = 0; k < total; k++) {
+        const a = s1 + k, b = s2 + k, label = a === b ? `第 ${a} 頁` : `第 ${a} ↔ ${b} 頁`;
+        $('status').textContent = `比對中 ${k + 1} / ${total}`;
+        bar.max = total; bar.value = k;
+        const [r1, r2] = await Promise.all([render(d1, a), render(d2, b)]);
+        let notes;
+        if (!r1.page || !r2.page) notes = [{ msg: `${r1.page ? '修正版' : '原版'}沒有這一頁` }];
+        else if (mode === 'appearance') {
+          const px = pixelDiff(r1.canvas, r2.canvas, m);
+          notes = px ? [{ msg: `${px.toLocaleString()} 個像素不同（${(px / (r1.canvas.width * r1.canvas.height) * 100).toFixed(2)}%）` }] : [];
+        } else {
+          const [da, db, hunks] = diff(await tokens(r1.page, r1.vp, mode, m), await tokens(r2.page, r2.vp, mode, m));
+          mark(r1.canvas, da); mark(r2.canvas, db);
+          const box = ts => {
+            if (!ts.length) return null;
+            const x = Math.min(...ts.map(t => t.x)), y = Math.min(...ts.map(t => t.y));
+            return { x, y, w: Math.max(...ts.map(t => t.x + t.w)) - x, h: Math.max(...ts.map(t => t.y + t.h)) - y };
+          };
+          notes = hunks.map(h => ({ d: tokensToText(h.d), i: tokensToText(h.i), bd: box(h.d), bi: box(h.i) }));
+          if (notes.length > MAX_NOTES) notes = [...notes.slice(0, MAX_NOTES), { msg: `另有 ${notes.length - MAX_NOTES} 處差異未列出` }];
+        }
+        if (!notes.length) continue;
+        differ++;
+        shade(r1.canvas, m); shade(r2.canvas, m);
+        const entry = { label, a, b, c1: r1.canvas, c2: r2.canvas, p1: r1.page, p2: r2.page, notes };
+        results.push(entry);
+        for (const c of [r1.canvas, r2.canvas]) Object.assign(c, {
+          tabIndex: 0, title: '放大檢視', onclick: () => openViewer(entry),
+          onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openViewer(entry); } },
+        });
+        const id = 'pg' + (k + 1), short = a === b ? `${a}` : `${a}↔${b}`;
+        const count = notes.some(n => n.msg) ? '' : `${notes.length} 處修改`;
+        out.append(el('section', { className: 'pair', id },
+          el('header', {}, el('h2', { textContent: label }), el('span', { className: 'count', textContent: count })),
+          el('div', { className: 'sides' },
+            el('figure', {}, el('figcaption', { textContent: `原版　${names[0]}　p.${a}` }), r1.canvas),
+            el('figure', {}, el('figcaption', { textContent: `修正版　${names[1]}　p.${b}` }), r2.canvas)),
+          el('ol', { className: 'notes' }, ...notes.map(n => {
+            const body = n.msg ? [n.msg] : [...(n.d ? [el('del', { textContent: n.d })] : []), ...(n.i ? [el('ins', { textContent: n.i })] : [])];
+            return el('li', {}, n.bd || n.bi
+              ? el('button', { className: 'note', title: '放大檢視這處修改', onclick: () => openViewer(entry, n) }, ...body)
+              : el('span', {}, ...body));
+          }))));
+        $('jump').append(el('a', { href: '#' + id, textContent: short }));
+      }
+      if (differ) {
+        $('total').textContent = `${total} 組頁面中有 ${differ} 組不同`;
+        $('summary').hidden = false;
+        $('status').textContent = '比對完成。';
+      } else {
+        out.append(el('div', { className: 'empty' }, el('strong', { textContent: '兩份檔案相同' }), `比對了 ${total} 組頁面，沒有找到差異。`));
+        $('status').textContent = '比對完成。';
+      }
     }
   } catch (e) {
     $('status').textContent = '無法比對：' + e.message;
